@@ -1,5 +1,4 @@
 import logging
-import math
 import matplotlib.pyplot as plt
 import networkx as nx
 from pathlib import Path
@@ -7,11 +6,11 @@ import random
 import sys
 
 class RandomGraph:
-  def __init__(self, n, p):
-    self._create_random_graph(n, p)
+  def __init__(self, n, k, p):
+    self._create_random_graph(n, k, p)
     while not nx.is_connected(self._random_graph):
       logging.error("Graph is not connected! Creating new graph")
-      self._create_random_graph(n, p)
+      self._create_random_graph(n, k, p)
     self._average_path_length = False
     self._clustering_coefficient = False
     self._average_degree = False
@@ -33,14 +32,22 @@ class RandomGraph:
     if not self._average_degree:
       self._compute_average_degree
     return self._average_degree
-    
-  def _create_random_graph(self, n, p):
+
+  def _add_paths(self, k, p):
+    for index, node in enumerate(list(self._random_graph.nodes)):
+      for i in range(1, k + 1):
+        target_index = (index + i - len(self._random_graph.nodes), index + i)[i >= len(self._random_graph)]
+        if random.random() < p:
+          while True: # do for do-while
+            target_index = random.randint(0, len(self._random_graph) - 1)
+            if index != target_index: # while for do-while
+              break
+        self._random_graph.add_edge(node, list(self._random_graph.nodes)[target_index])
+   
+  def _create_random_graph(self, n, k, p):
     self._random_graph = nx.Graph()
     self._random_graph.add_nodes_from(range(0, n))
-    for i in self._random_graph.nodes:
-      for j in self._random_graph.nodes:
-        if i != j and random.random() < p:
-          self._random_graph.add_edge(i, j)
+    self._add_paths(k, p)
 
   def _get_sample_paths(self):
     node_count = len(self._random_graph)
@@ -85,7 +92,7 @@ class RandomGraph:
           neighbor_pairs += 1
           if self._random_graph.has_edge(neighbor1, neighbor2):
             triangles += 1
-      self._random_graph.nodes[node]["clustering_coefficient"] = triangles / neighbor_pairs
+      self._random_graph.nodes[node]["clustering_coefficient"] = (triangles / neighbor_pairs, 0)[neighbor_pairs == 0]
 
   def _compute_clustering_coefficient(self):
     self._compute_node_clustering_coefficients()
@@ -106,70 +113,48 @@ class RandomGraph:
   def get_clustering_coefficient(self):
     return nx.average_clustering(self._random_graph)
 
+def create_plot(path, x, y, x_label, y_label):
+  plt.plot(x, y)
+  plt.xlabel(x_label)
+  plt.ylabel(y_label)
+  plt.xscale("log")
+  plt.savefig(path)
+  plt.close()
+
 if __name__ == "__main__":
   directory = sys.argv[1]
   Path(f"./{directory}").mkdir(parents=True, exist_ok=True)
   logging.basicConfig(
-    filename=f"./{directory}/gg.log",
+    filename=f"./{directory}/wsg.log",
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
   )
 
-  # experiment for dependency between growth of node number and average path length
-  # n is starting number of nodes, p is starting probability for an edge between nodes
-  # c refers to different values for n
-  # between each iteration, the value of n is multiplied by 2, p is adapted accordingly
-  # getting the cluster coefficient for large values for n takes a long time, it might be best to comment that out for this experiment
-  n = 32
-  p = 0.3
+  # experiment from exercise 4
+  n = 5000
+  k = 2
+  probabilities = [0.00001, 0.0001, 0.001, 0.01, 0.1, 1]
   path_lengths = []
-  nodes = []
-  for c in range(0, 10):
-    logging.info(f"Creating graph with n={n} and p={p}")
-    graph = RandomGraph(n, p)
+  clustering_coefficients = []
+  for p in probabilities:
+    logging.info(f"Creating graph with n={n}, k={k} and p={p}")
+    graph = RandomGraph(n, k, p)
     logging.info(f"Average path length: {graph.average_path_length}")
-    nodes.append(n)
     path_lengths.append(graph.average_path_length)
-    p = p * (n - 1) / (n * 2 - 1)
-    n = n * 2
-  plt.plot(nodes, path_lengths)
-  plt.xlabel("Number of nodes")
-  plt.ylabel("Average path length")
-  plt.savefig(f"./{directory}/path_lengths.png")
-
-  # experiment for the depenency between n and the clustering coefficient
-  nodes = [32, 64, 128, 256, 512, 1024, 2048, 4096]
-  p = 0.3
-  clustering_coefficients = []
-  for n in nodes:
-    average = 0
-    for _ in range(0, 1):
-      logging.info(f"Creating graph with n={n} and p={p}")
-      graph = RandomGraph(n, p)
-      logging.info(f"Clustering coefficient: {graph.clustering_coefficient}")
-      average += graph.clustering_coefficient
-    clustering_coefficients.append(graph.clustering_coefficient / 10)
-  plt.plot(nodes, clustering_coefficients)
-  plt.xlabel("Number of nodes")
-  plt.ylabel("Clustering coefficient")
-  plt.savefig(f"./{directory}/clustering_coefficients_n.png")
-
-  # experiment for the dependencz between p and the clustering coefficient
-  n = 512
-  p = 0.05
-  probabilities = []
-  clustering_coefficients = []
-  while p <= 0.95 :
-    average = 0
-    logging.info(f"Creating graph with n={n} and p={p}")
-    graph = RandomGraph(n, p)
     logging.info(f"Clustering coefficient: {graph.clustering_coefficient}")
-    average += graph.clustering_coefficient
-    probabilities.append(p)
     clustering_coefficients.append(graph.clustering_coefficient)
-    p = round(p + 0.05, 2)
-  plt.plot(probabilities, clustering_coefficients)
-  plt.xlabel("Probability")
-  plt.ylabel("Clustering coefficient")
-  plt.savefig(f"./{directory}/clustering_coefficients_p.png")
+  create_plot(
+    f"./{directory}/clustering_coefficient.png",
+    probabilities,
+    clustering_coefficients,
+    "p",
+    "clustering coefficient"
+  )
+  create_plot(
+    f"./{directory}/path_lengths.png",
+    probabilities,
+    path_lengths,
+    "p",
+    "average path length"
+  )
